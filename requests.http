@@ -1,0 +1,49 @@
+@base = http://localhost:3000
+
+### Products
+GET {{base}}/products
+
+### Create cart
+# @name cart
+POST {{base}}/carts
+
+### Add item
+POST {{base}}/carts/{{cart.response.body.id}}/items
+Content-Type: application/json
+
+{ "productId": "sku_sneaker_ltd", "quantity": 1 }
+
+### Change quantity
+PATCH {{base}}/carts/{{cart.response.body.id}}/items/sku_sneaker_ltd
+Content-Type: application/json
+
+{ "quantity": 2 }
+
+### View cart
+GET {{base}}/carts/{{cart.response.body.id}}
+
+### Checkout (send twice with the same key: the second call replays the same order)
+# @name order
+POST {{base}}/carts/{{cart.response.body.id}}/checkout
+Content-Type: application/json
+Idempotency-Key: demo-checkout-1
+
+{}
+
+### Get order
+GET {{base}}/orders/{{order.response.body.id}}
+
+### Admin: generate coupon (409 until the nth order)
+POST {{base}}/admin/coupons
+
+### Admin: list coupons
+GET {{base}}/admin/coupons
+
+### Admin: report
+GET {{base}}/admin/report
+
+### Admin: change price / stock
+PATCH {{base}}/admin/products/sku_mug
+Content-Type: application/json
+
+{ "priceCents": 1400, "stock": 10 }
