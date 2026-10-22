@@ -158,4 +158,6 @@ I also checked behaviour by running the server and sending cart, checkout and co
 
 ## Time spent
 
-> **To complete:** state your approximate time here.
+About 4 hours in total. That covers reading the brief and pinning down the ambiguous rules, building with an AI assistant, reviewing the checkout and coupon logic, writing and checking the concurrency tests, and the docs.
+
+Nothing in the brief is left unimplemented. The deliberate simplifications (in-memory storage, no idempotency-key TTL, no auth) are listed under "Implemented vs deferred", with how I'd handle each in production.
