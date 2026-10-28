@@ -32,7 +32,10 @@ Configuration (environment variables):
 
 Seeded products: `sku_tshirt`, `sku_hoodie`, `sku_mug`, `sku_cap`, `sku_backpack`, and `sku_sneaker_ltd` (stock 3). Restarting resets all data.
 
-[requests.http](requests.http) walks through the main flow and works with the VS Code REST Client or JetBrains HTTP client.
+To try the API by hand:
+
+- **Postman:** import [postman_collection.json](postman_collection.json) and run the folders top to bottom. `cartId`, `orderId` and `couponCode` are saved automatically, and there's an "Error cases" folder. For a quick coupon demo start with `COUPON_EVERY_N_ORDERS=1 npm start`.
+- **VS Code / JetBrains:** [requests.http](requests.http) covers the main flow.
 
 ## Conventions
 

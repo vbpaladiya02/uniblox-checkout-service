@@ -1,0 +1,474 @@
+{
+  "info": {
+    "name": "Checkout & Rewards Service",
+    "description": "Start the service with `npm start`, then run the folders top to bottom. cartId, orderId and couponCode are saved automatically by the test scripts.\n\nCoupons unlock every n orders (default 5). For a quick demo start the server with `COUPON_EVERY_N_ORDERS=1`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "cartId", "value": "" },
+    { "key": "orderId", "value": "" },
+    { "key": "couponCode", "value": "" },
+    { "key": "idempotencyKey", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Catalog",
+      "item": [
+        {
+          "name": "List products",
+          "request": { "method": "GET", "url": "{{baseUrl}}/products" }
+        }
+      ]
+    },
+    {
+      "name": "Cart",
+      "item": [
+        {
+          "name": "Create cart",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('cartId', pm.response.json().id);",
+                  "pm.collectionVariables.set('idempotencyKey', '');"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "POST", "url": "{{baseUrl}}/carts" }
+        },
+        {
+          "name": "Add item",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"productId\": \"sku_tshirt\",\n  \"quantity\": 2\n}" },
+            "url": "{{baseUrl}}/carts/{{cartId}}/items"
+          }
+        },
+        {
+          "name": "Add limited-stock item",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"productId\": \"sku_sneaker_ltd\",\n  \"quantity\": 1\n}" },
+            "url": "{{baseUrl}}/carts/{{cartId}}/items"
+          }
+        },
+        {
+          "name": "Update quantity",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"quantity\": 3\n}" },
+            "url": "{{baseUrl}}/carts/{{cartId}}/items/sku_tshirt"
+          }
+        },
+        {
+          "name": "Add then remove item",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.sendRequest({",
+                  "  url: pm.variables.replaceIn('{{baseUrl}}/carts/{{cartId}}/items'),",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify({ productId: 'sku_mug', quantity: 1 }) }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/carts/{{cartId}}/items/sku_mug" }
+        },
+        {
+          "name": "Get cart",
+          "request": { "method": "GET", "url": "{{baseUrl}}/carts/{{cartId}}" },
+          "response": [
+            {
+              "name": "Cart with items",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"id\": \"4f1c2a9e-7d1b-4c55-9f0a-2b7e3c1d9a10\",\n  \"status\": \"OPEN\",\n  \"orderId\": null,\n  \"items\": [\n    { \"productId\": \"sku_tshirt\", \"name\": \"Cotton T-Shirt\", \"quantity\": 3, \"unitPriceCents\": 1999, \"lineTotalCents\": 5997, \"inStock\": true },\n    { \"productId\": \"sku_sneaker_ltd\", \"name\": \"Limited Edition Sneaker\", \"quantity\": 1, \"unitPriceCents\": 15000, \"lineTotalCents\": 15000, \"inStock\": true }\n  ],\n  \"itemCount\": 4,\n  \"subtotalCents\": 20997\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Checkout",
+      "item": [
+        {
+          "name": "Checkout",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "if (!pm.collectionVariables.get('idempotencyKey')) {",
+                  "  pm.collectionVariables.set('idempotencyKey', pm.variables.replaceIn('{{$guid}}'));",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('orderId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": "{{baseUrl}}/carts/{{cartId}}/checkout"
+          },
+          "response": [
+            {
+              "name": "Order created",
+              "status": "Created",
+              "code": 201,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" },
+                { "key": "Idempotent-Replayed", "value": "false" }
+              ],
+              "body": "{\n  \"id\": \"b2e0f6d4-1a3c-4e8b-9d7f-5c6a4b3e2d10\",\n  \"number\": 1,\n  \"cartId\": \"4f1c2a9e-7d1b-4c55-9f0a-2b7e3c1d9a10\",\n  \"lines\": [\n    { \"productId\": \"sku_tshirt\", \"name\": \"Cotton T-Shirt\", \"unitPriceCents\": 1999, \"quantity\": 3, \"lineTotalCents\": 5997 },\n    { \"productId\": \"sku_sneaker_ltd\", \"name\": \"Limited Edition Sneaker\", \"unitPriceCents\": 15000, \"quantity\": 1, \"lineTotalCents\": 15000 }\n  ],\n  \"subtotalCents\": 20997,\n  \"coupon\": null,\n  \"discountCents\": 0,\n  \"totalCents\": 20997,\n  \"paymentReference\": \"pay_6a1d…\",\n  \"createdAt\": \"2026-10-28T10:15:00.000Z\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Retry checkout (same key)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('returns the same order', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('orderId'));",
+                  "  pm.expect(pm.response.headers.get('Idempotent-Replayed')).to.eql('true');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": "{{baseUrl}}/carts/{{cartId}}/checkout"
+          }
+        },
+        {
+          "name": "Checkout again (new key) - 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": "{{baseUrl}}/carts/{{cartId}}/checkout"
+          },
+          "response": [
+            {
+              "name": "Already checked out",
+              "status": "Conflict",
+              "code": 409,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"error\": {\n    \"code\": \"CART_ALREADY_CHECKED_OUT\",\n    \"message\": \"Cart has already been checked out\",\n    \"details\": { \"orderId\": \"b2e0f6d4-1a3c-4e8b-9d7f-5c6a4b3e2d10\" }\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get order",
+          "request": { "method": "GET", "url": "{{baseUrl}}/orders/{{orderId}}" }
+        }
+      ]
+    },
+    {
+      "name": "Coupons",
+      "description": "Generate a coupon once a milestone is reached, then use it on a fresh cart.",
+      "item": [
+        {
+          "name": "Generate coupon (admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set('couponCode', pm.response.json().code);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "POST", "url": "{{baseUrl}}/admin/coupons" },
+          "response": [
+            {
+              "name": "Coupon generated",
+              "status": "Created",
+              "code": 201,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"code\": \"SAVE-1A2B3C4D\",\n  \"percentOff\": 10,\n  \"milestone\": 5,\n  \"status\": \"AVAILABLE\",\n  \"orderId\": null,\n  \"createdAt\": \"2026-10-28T10:20:00.000Z\",\n  \"redeemedAt\": null\n}"
+            },
+            {
+              "name": "Milestone not reached",
+              "status": "Conflict",
+              "code": 409,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"error\": {\n    \"code\": \"NO_ELIGIBLE_MILESTONE\",\n    \"message\": \"No unrewarded order milestone is available\",\n    \"details\": { \"ordersPlaced\": 3, \"nextMilestoneAt\": 5 }\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create cart for coupon",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('cartId', pm.response.json().id);",
+                  "pm.collectionVariables.set('idempotencyKey', '');"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "POST", "url": "{{baseUrl}}/carts" }
+        },
+        {
+          "name": "Add backpack",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"productId\": \"sku_backpack\",\n  \"quantity\": 1\n}" },
+            "url": "{{baseUrl}}/carts/{{cartId}}/items"
+          }
+        },
+        {
+          "name": "Checkout with coupon",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "if (!pm.collectionVariables.get('idempotencyKey')) {",
+                  "  pm.collectionVariables.set('idempotencyKey', pm.variables.replaceIn('{{$guid}}'));",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) pm.collectionVariables.set('orderId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"couponCode\": \"{{couponCode}}\"\n}" },
+            "url": "{{baseUrl}}/carts/{{cartId}}/checkout"
+          },
+          "response": [
+            {
+              "name": "Order with discount",
+              "status": "Created",
+              "code": 201,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"id\": \"c7d1e2f3-4a5b-4c6d-8e9f-0a1b2c3d4e5f\",\n  \"number\": 6,\n  \"cartId\": \"9a8b7c6d-5e4f-4a3b-2c1d-0e9f8a7b6c5d\",\n  \"lines\": [\n    { \"productId\": \"sku_backpack\", \"name\": \"Travel Backpack\", \"unitPriceCents\": 8999, \"quantity\": 1, \"lineTotalCents\": 8999 }\n  ],\n  \"subtotalCents\": 8999,\n  \"coupon\": { \"code\": \"SAVE-1A2B3C4D\", \"percentOff\": 10 },\n  \"discountCents\": 900,\n  \"totalCents\": 8099,\n  \"paymentReference\": \"pay_93be…\",\n  \"createdAt\": \"2026-10-28T10:22:00.000Z\"\n}"
+            },
+            {
+              "name": "Coupon already used",
+              "status": "Conflict",
+              "code": 409,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"error\": {\n    \"code\": \"COUPON_ALREADY_REDEEMED\",\n    \"message\": \"Coupon SAVE-1A2B3C4D has already been used\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "List coupons (admin)",
+          "request": { "method": "GET", "url": "{{baseUrl}}/admin/coupons" }
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Report",
+          "request": { "method": "GET", "url": "{{baseUrl}}/admin/report" },
+          "response": [
+            {
+              "name": "Summary",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"ordersPlaced\": 2,\n  \"itemsPurchased\": [\n    { \"productId\": \"sku_backpack\", \"name\": \"Travel Backpack\", \"quantity\": 1, \"grossCents\": 8999 },\n    { \"productId\": \"sku_sneaker_ltd\", \"name\": \"Limited Edition Sneaker\", \"quantity\": 1, \"grossCents\": 15000 },\n    { \"productId\": \"sku_tshirt\", \"name\": \"Cotton T-Shirt\", \"quantity\": 3, \"grossCents\": 5997 }\n  ],\n  \"totalItemsPurchased\": 5,\n  \"grossRevenueCents\": 29996,\n  \"totalDiscountCents\": 900,\n  \"netRevenueCents\": 29096,\n  \"coupons\": {\n    \"generated\": 1,\n    \"available\": 0,\n    \"reserved\": 0,\n    \"redeemed\": 1,\n    \"codes\": [{ \"code\": \"SAVE-1A2B3C4D\", \"status\": \"REDEEMED\", \"percentOff\": 10 }]\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Update product price / stock",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"priceCents\": 1400,\n  \"stock\": 10\n}" },
+            "url": "{{baseUrl}}/admin/products/sku_mug"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Error cases",
+      "item": [
+        {
+          "name": "Unknown product - 404",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"productId\": \"sku_does_not_exist\",\n  \"quantity\": 1\n}" },
+            "url": "{{baseUrl}}/carts/{{cartId}}/items"
+          }
+        },
+        {
+          "name": "Invalid quantity - 400",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"productId\": \"sku_mug\",\n  \"quantity\": 0\n}" },
+            "url": "{{baseUrl}}/carts/{{cartId}}/items"
+          },
+          "response": [
+            {
+              "name": "Validation error",
+              "status": "Bad Request",
+              "code": 400,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"error\": {\n    \"code\": \"VALIDATION_ERROR\",\n    \"message\": \"Request validation failed\",\n    \"details\": [{ \"path\": \"quantity\", \"message\": \"Too small: expected number to be >0\" }]\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "More than stock - 409",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"productId\": \"sku_sneaker_ltd\",\n  \"quantity\": 10\n}" },
+            "url": "{{baseUrl}}/carts/{{cartId}}/items"
+          },
+          "response": [
+            {
+              "name": "Insufficient inventory",
+              "status": "Conflict",
+              "code": 409,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"error\": {\n    \"code\": \"INSUFFICIENT_INVENTORY\",\n    \"message\": \"Only 3 of Limited Edition Sneaker available\",\n    \"details\": { \"productId\": \"sku_sneaker_ltd\", \"requested\": 10, \"available\": 3 }\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Checkout without Idempotency-Key - 400",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": "{{baseUrl}}/carts/{{cartId}}/checkout"
+          }
+        },
+        {
+          "name": "Invalid coupon - 422",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.sendRequest({ url: pm.variables.replaceIn('{{baseUrl}}/carts'), method: 'POST' }, (err, res) => {",
+                  "  const cartId = res.json().id;",
+                  "  pm.variables.set('errCartId', cartId);",
+                  "  pm.sendRequest({",
+                  "    url: pm.variables.replaceIn('{{baseUrl}}/carts/') + cartId + '/items',",
+                  "    method: 'POST',",
+                  "    header: { 'Content-Type': 'application/json' },",
+                  "    body: { mode: 'raw', raw: JSON.stringify({ productId: 'sku_cap', quantity: 1 }) }",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"couponCode\": \"SAVE-NOTREAL\"\n}" },
+            "url": "{{baseUrl}}/carts/{{errCartId}}/checkout"
+          },
+          "response": [
+            {
+              "name": "Invalid coupon",
+              "status": "Unprocessable Entity",
+              "code": 422,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"error\": {\n    \"code\": \"INVALID_COUPON\",\n    \"message\": \"Coupon SAVE-NOTREAL does not exist\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Empty cart checkout - 422",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.sendRequest({ url: pm.variables.replaceIn('{{baseUrl}}/carts'), method: 'POST' }, (err, res) => {",
+                  "  pm.variables.set('emptyCartId', res.json().id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": "{{baseUrl}}/carts/{{emptyCartId}}/checkout"
+          }
+        },
+        {
+          "name": "Unknown cart - 404",
+          "request": { "method": "GET", "url": "{{baseUrl}}/carts/does-not-exist" }
+        }
+      ]
+    }
+  ]
+}
